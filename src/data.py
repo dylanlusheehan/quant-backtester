@@ -31,8 +31,14 @@ def fetch_prices(
     start: str = START,
     end: str = END,
     use_cache: bool = True,
+    write_cache: bool = True,
 ) -> pd.DataFrame:
-    """Download OHLCV bars for one ticker, caching to CSV on first call."""
+    """Download OHLCV bars for one ticker, caching to CSV on first call.
+
+    write_cache=False is for the live trading script (Step 8), which asks for
+    a window ending "today" on every run -- without this flag, every daily run
+    would drop a new CSV into data/cache/, accumulating junk files over weeks.
+    """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = _cache_path(ticker, start, end)
 
@@ -49,7 +55,8 @@ def fetch_prices(
 
     df = raw[["Open", "High", "Low", "Close", "Volume"]].copy()
     df.index.name = "Date"
-    df.to_csv(path)
+    if write_cache:
+        df.to_csv(path)
     return df
 
 
