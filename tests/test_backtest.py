@@ -119,3 +119,54 @@ def test_trade_log_reconciles_with_equity_curve():
             - 1.0
         ) * 100.0
         assert abs(equity_move - trade["return_pct"]) < 1e-6
+
+
+def test_zscore_reversion_rejects_bad_thresholds():
+    """entry_z must be below exit_z or the state machine is nonsense."""
+    import pytest
+
+    from src.strategies import zscore_reversion
+
+    prices = _straight_line_prices()
+    with pytest.raises(ValueError):
+        zscore_reversion(prices, entry_z=1.0, exit_z=-1.0)
+
+
+def test_zscore_reversion_is_binary_and_aligned():
+    """Signal must contain only 0.0/1.0 and match the price index.
+
+    Uses the oscillating fixture, NOT the straight line. On a monotonically
+    rising series the price is always above its own rolling mean, so the
+    z-score never reaches -1 and the signal is all zeros -- the test would pass
+    without ever exercising the long branch. A green test that never runs the
+    code it claims to test is worse than no test.
+    """
+    from src.strategies import zscore_reversion
+
+    prices = _mean_reverting_prices()
+    signal = zscore_reversion(prices)
+
+    assert set(signal.unique()).issubset({0.0, 1.0})
+    assert signal.index.equals(prices.index)
+    assert signal.iloc[:19].eq(0.0).all()   # warmup is flat
+    assert signal.sum() > 0, "fixture must actually trigger entries"
+
+
+def test_zscore_reversion_holds_between_thresholds():
+    """Between entry_z and exit_z the previous position must persist.
+
+    This is what makes it a state machine rather than a threshold rule, and
+    it's the part the forward-fill implementation could silently get wrong.
+    """
+    from src.strategies import zscore_reversion
+
+    prices = _mean_reverting_prices()
+    signal = zscore_reversion(prices, lookback=20, entry_z=-1.0, exit_z=0.0)
+
+    rolling_mean = prices.rolling(20, min_periods=20).mean()
+    rolling_std = prices.rolling(20, min_periods=20).std(ddof=1)
+    zscore = (prices - rolling_mean) / rolling_std
+
+    middle = (zscore > -1.0) & (zscore < 0.0)
+    held = signal[middle] == signal.shift(1)[middle]
+    assert held.all(), "position changed while z-score was between thresholds"

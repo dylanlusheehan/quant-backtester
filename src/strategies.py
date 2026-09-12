@@ -34,3 +34,34 @@ def sma_crossover(prices: pd.Series, fast: int = 50, slow: int = 200) -> pd.Seri
 
     signal.name = f"sma_{fast}_{slow}"
     return signal
+
+
+def zscore_reversion(
+    prices: pd.Series,
+    lookback: int = 20,
+    entry_z: float = -1.0,
+    exit_z: float = 0.0,
+) -> pd.Series:
+    """Long when price is unusually cheap vs its rolling mean, flat once it reverts.
+
+    Between the entry and exit thresholds the previous position is held, which
+    is what makes this a state machine rather than a simple threshold rule.
+    """
+    if entry_z >= exit_z:
+        raise ValueError(f"entry_z ({entry_z}) must be below exit_z ({exit_z})")
+
+    rolling_mean = prices.rolling(window=lookback, min_periods=lookback).mean()
+    rolling_std = prices.rolling(window=lookback, min_periods=lookback).std(ddof=1)
+    zscore = (prices - rolling_mean) / rolling_std
+
+    # Mark only the bars where state actually changes; forward-fill between them.
+    raw = pd.Series(float("nan"), index=prices.index)
+    raw[zscore <= entry_z] = 1.0
+    raw[zscore >= exit_z] = 0.0
+
+    signal = raw.ffill().fillna(0.0)
+    signal[rolling_std.isna()] = 0.0     # warmup stays flat
+    signal[rolling_std == 0] = 0.0       # avoid divide-by-zero artifacts
+
+    signal.name = f"zrev_{lookback}_{entry_z}_{exit_z}"
+    return signal

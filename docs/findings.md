@@ -69,3 +69,78 @@ is built to protect against a slow bleed like 2000-2002 or 2007-2009, and this
 dataset doesn't contain one — which is a specific, testable claim rather than
 a vague excuse, and the right honest conclusion to report rather than forcing
 the textbook narrative onto data that didn't produce it.
+
+---
+
+# Head-to-Head Comparison — SMA Crossover vs. Z-Score Mean Reversion
+
+Parameters used: SMA 50/200 and Z-rev 20/-1.0 — both un-cherry-picked defaults,
+locked in `src/config.py` (see that file's docstring for why the tuned z-rev
+winner from tuning, 30/-1.5, was deliberately not used as the headline).
+
+## Out-of-sample tuning (z-rev)
+Best in-sample parameters: lookback=30, entry_z=-1.5.
+In-sample Sharpe 0.75 vs out-of-sample Sharpe 0.25 — a ~67% degradation,
+roughly double SMA's 33% degradation from Step 4 (0.94 -> 0.63). Confirms the
+guide's prediction that higher-turnover strategies (127 z-rev trades vs. 8-14
+for SMA) have more surface area to overfit during tuning.
+
+## Cost sensitivity (z-rev)
+At the shared 7 bps baseline, z-rev's Sharpe already drops 0.496 -> 0.413
+(~17%), versus SMA's 0.712 -> 0.707 (<1%) at the same cost level. Breakeven
+friction for z-rev is roughly ~42 bps (Sharpe crosses zero between the 30 bps
+and 60 bps scenarios); SMA never crosses zero anywhere in the tested 0-60 bps
+range. At 60 bps, z-rev is outright unprofitable (CAGR -3.6%, Sharpe -0.21).
+Same cost assumption, opposite verdict — purely a function of trade frequency
+(127 trades vs. 8).
+
+## Two different questions, two different answers
+
+**Does either strategy beat buy-and-hold?** No — not anywhere. Z-rev beats
+SMA on CAGR on only 1 of 6 tickers (KO). Averaged across all 6: buy-and-hold
+15.5% CAGR > SMA 9.5% > z-rev 4.4%. Neither strategy beats buy-and-hold's
+Sharpe in any of the 4 market regimes tested. Consistent with Step 4's
+conclusion: 2010-2026 has been too persistently bullish for either active
+style to add value over simply holding.
+
+**Are the two strategies complementary relative to each other?** Yes, and
+cleanly so — matching the predictions written in `docs/strategy-spec.md`
+*before* either was tuned or backtested:
+
+| Regime | SMA Sharpe | Z-rev Sharpe | Relative winner |
+|---|---|---|---|
+| 2010-2014 recovery | 0.98 | 0.43 | SMA |
+| 2015-2019 grinding chop | 0.58 | 0.72 | **Z-rev** |
+| 2020-2022 crash + bear | 0.29 | -0.00 | SMA |
+| 2023-2026 AI rally | 1.07 | 0.73 | SMA |
+
+Z-rev's one win against SMA is exactly the choppy 2015-2019 regime the spec
+predicted it would handle better. Its worst regime relative to SMA is exactly
+2020-2022 — the "catches a falling knife" failure mode the spec predicted for
+sustained downtrends.
+
+**The clearest concrete example of that failure mode: XOM.** Z-rev's max
+drawdown there is -61.5%, nearly identical to buy-and-hold's -62.4% and far
+worse than SMA's -42.3%. During the 2020 oil crash, mean reversion kept buying
+every dip through a genuine sustained decline instead of sitting out.
+
+**KO is the standout exception** — the one ticker where z-rev beats SMA
+outright on both CAGR and Sharpe. KO is a low-volatility consumer staple, the
+kind of rangebound instrument mean reversion is built for, versus the more
+directional growth/energy names elsewhere in the ticker list.
+
+**Win rate matches the spec's prediction too.** Z-rev's average win rate
+(76.3%) is far above SMA's (58.4%) — more, smaller wins, exactly as specified.
+But at only 29% average exposure (vs. SMA's 72%) and 122 trades vs. 11, most of
+that edge is eaten by time spent flat and by transaction costs.
+
+## Headline conclusion
+Neither strategy beats passive buy-and-hold in this specific 16-year bull-
+market window — that finding held at the single-strategy level in Step 4 and
+holds again here. But the two strategies remain meaningfully complementary
+*relative to each other*: each wins and loses in exactly the market regimes
+its own thesis predicts, a pattern that was written down in the spec before
+either strategy was built or tested. That's the more interesting and more
+defensible claim than "strategy X beats the market" — it demonstrates the
+tools correctly detect regime-dependent behavior, which is the actual skill
+this project is meant to prove.
